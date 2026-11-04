@@ -8,7 +8,8 @@ con más frecuencia. La capacidad T es el 45 % de la suma de tiempos, lo
 que deja muchas combinaciones posibles (peor caso para la fuerza bruta).
 
 Las semillas fijas se escogieron porque el greedy NO llega al óptimo en
-esos casos, así la comparación entre técnicas es visible.
+esos casos, así la comparación entre técnicas es visible. Los casos n=100 y
+n=1000 (Entrega 3) son los tamaños que pide la tabla comparativa final.
 
 Uso (desde la raíz del repo o desde src/):
     python src/generar_datos.py
@@ -20,6 +21,9 @@ CASOS = {
     # nombre_archivo: (n, semilla)
     "caso_mediano.txt": (20, 202),
     "caso_grande.txt": (28, 391),
+    # Entrega 3: tamaños exigidos por la tabla comparativa final
+    "caso_n100.txt": (100, 100),
+    "caso_n1000.txt": (1000, 1008),
 }
 
 FRACCION_CAPACIDAD = 0.45
