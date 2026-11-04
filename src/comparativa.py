@@ -1,19 +1,25 @@
 """
-Comparativa Entrega 2: Fuerza bruta vs Greedy vs Backtracking.
+Comparativa FINAL (Entrega 3): las 5 técnicas sobre el mismo problema.
 
-Ejecuta las tres soluciones sobre:
-  1. Los archivos de prueba de datos/  -> tabla para el PDF
-  2. Instancias aleatorias n = 5..25   -> gráfica de tiempos (escala log)
-  3. Instancias grandes n = 50..1000   -> escalabilidad greedy vs backtracking
-     (la fuerza bruta ya no termina en tiempo razonable)
-  4. Calidad del greedy (% del óptimo) para cada n
+    FB  = Fuerza bruta              (Entrega 1)
+    G   = Greedy                    (Entrega 2)
+    BT  = Backtracking con poda     (Entrega 2)
+    DV  = Divide y vencerás         (Entrega 3)
+    PD  = Programación dinámica     (Entrega 3)
+
+Partes:
+  1. Archivos de prueba de datos/ (incluye n=100 y n=1000)
+     -> verifica que FB, BT, DV y PD den la MISMA prioridad óptima.
+  2. Tabla comparativa final (complejidades + tiempos reales n=100, n=1000).
+  3. Curva de tiempos vs n para las 5 técnicas (gráfica principal).
+  4. Gráficas guardadas en docs/.
 
 Uso (desde la raíz del repo o desde src/):
-    python src/comparativa.py
-    python src/comparativa.py --rapido   (omite la fuerza bruta del caso grande)
+    python src/comparativa.py            # completo (~3 min)
+    python src/comparativa.py --rapido   # para la demo (~20 s): omite FB n=28
+                                         # y DV con n > 400
 """
 import os
-import random
 import sys
 import time
 
@@ -23,7 +29,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from backtracking import backtracking
+from dinamica import programacion_dinamica
+from divide_y_venceras import divide_y_venceras
 from fuerza_bruta import Tarea, cargar_caso, fuerza_bruta_rec
+from generar_datos import generar
 from greedy import greedy
 
 DIR_SRC = os.path.dirname(os.path.abspath(__file__))
@@ -31,18 +40,14 @@ DIR_DATOS = os.path.join(DIR_SRC, "..", "datos")
 DIR_DOCS = os.path.join(DIR_SRC, "..", "docs")
 RAPIDO = "--rapido" in sys.argv
 
-random.seed(2026)  # resultados reproducibles
+LIMITE_FB = 25 if RAPIDO else 28     # n máximo en que se ejecuta la fuerza bruta
+LIMITE_DV = 400 if RAPIDO else 1000  # n máximo en que se ejecuta divide y vencerás
 
-
-def generar_caso(n):
-    """Tareas aleatorias con prioridad correlacionada con el tiempo (igual
-    que generar_datos.py). Capacidad = 45 % de la suma de tiempos."""
-    tareas = []
-    for i in range(1, n + 1):
-        t = random.randint(5, 30)
-        tareas.append(Tarea(i, t, max(1, t + random.randint(-3, 12))))
-    capacidad = int(sum(x.tiempo for x in tareas) * 0.45)
-    return tareas, capacidad
+NOMBRES = {"FB": "Fuerza bruta", "G": "Greedy", "BT": "Backtracking",
+           "DV": "Divide y vencerás", "PD": "Programación dinámica"}
+COLORES = {"FB": "#d62728", "G": "#1f77b4", "BT": "#2ca02c",
+           "DV": "#9467bd", "PD": "#ff7f0e"}
+MARCAS = {"FB": "o", "G": "d", "BT": "^", "DV": "s", "PD": "v"}
 
 
 def cronometrar(funcion, *args):
@@ -51,18 +56,55 @@ def cronometrar(funcion, *args):
     return resultado, time.perf_counter() - inicio
 
 
+def ejecutar_todas(tareas, capacidad, limite_fb=LIMITE_FB, limite_dv=LIMITE_DV):
+    """Ejecuta las 5 técnicas. Devuelve {clave: (prioridad, segundos)}.
+    Una técnica que no se ejecuta por tamaño queda como (None, None)."""
+    n = len(tareas)
+    r = {}
+    if n <= limite_fb:
+        (p, _), t = cronometrar(fuerza_bruta_rec, tareas, capacidad, 0)
+        r["FB"] = (p, t)
+    else:
+        r["FB"] = (None, None)
+    (p, _, _), t = cronometrar(greedy, tareas, capacidad)
+    r["G"] = (p, t)
+    (p, _, _), t = cronometrar(backtracking, tareas, capacidad)
+    r["BT"] = (p, t)
+    if n <= limite_dv:
+        (p, _, _), t = cronometrar(divide_y_venceras, tareas, capacidad)
+        r["DV"] = (p, t)
+    else:
+        r["DV"] = (None, None)
+    (p, _, _), t = cronometrar(programacion_dinamica, tareas, capacidad)
+    r["PD"] = (p, t)
+
+    # Las técnicas exactas deben coincidir entre sí
+    exactas = {r[k][0] for k in ("FB", "BT", "DV", "PD") if r[k][0] is not None}
+    assert len(exactas) == 1, f"Las técnicas exactas no coinciden: {r}"
+    return r
+
+
+def fmt_t(t):
+    return "      -     " if t is None else f"{t:11.6f}s"
+
+
+def fmt_p(p):
+    return "    -" if p is None else f"{p:>5}"
+
+
 # -------------------------------------------------------------
 # 1. ARCHIVOS DE PRUEBA
 # -------------------------------------------------------------
-print("=" * 96)
-print("1. ARCHIVOS DE PRUEBA")
-print("=" * 96)
-print(f"{'Archivo':<32}{'n':>4}{'T':>6} | {'FB prio':>8}{'FB seg':>11} | "
-      f"{'Greedy':>7}{'G seg':>10} | {'BT prio':>8}{'BT seg':>10}{'nodos BT':>10}")
-print("-" * 96)
+print("=" * 104)
+print("1. ARCHIVOS DE PRUEBA  (prioridad obtenida | tiempo)")
+print("=" * 104)
+print(f"{'Archivo':<30}{'n':>5}{'T':>6} | {'FB':^19} | {'Greedy':^19} | "
+      f"{'Backtracking':^19} | {'Divide y V.':^19} | {'P. dinámica':^19}")
+print("-" * 140)
 
-archivos = ["caso_contraejemplo_greedy.txt", "caso_pequeno.txt",
-            "caso_mediano.txt", "caso_grande.txt"]
+archivos = ["caso_contraejemplo_greedy.txt", "caso_pequeno.txt", "caso_mediano.txt",
+            "caso_grande.txt", "caso_n100.txt", "caso_n1000.txt"]
+resultados_archivos = {}
 
 for nombre in archivos:
     ruta = os.path.join(DIR_DATOS, nombre)
@@ -70,62 +112,86 @@ for nombre in archivos:
         print(f"Advertencia: no se encontró {ruta}")
         continue
     n, cap, tareas = cargar_caso(ruta)
-
-    if RAPIDO and n > 22:
-        fb_p, fb_t = None, None
-    else:
-        (fb_p, _), fb_t = cronometrar(fuerza_bruta_rec, tareas, cap, 0)
-    (g_p, _, _), g_t = cronometrar(greedy, tareas, cap)
-    (bt_p, _, nodos), bt_t = cronometrar(backtracking, tareas, cap)
-
-    fb_txt = f"{fb_p:>8}{fb_t:>11.4f}" if fb_p is not None else f"{'-':>8}{'omitido':>11}"
-    marca = "" if g_p == bt_p else " *"
-    print(f"{nombre:<32}{n:>4}{cap:>6} | {fb_txt} | {g_p:>7}{g_t:>10.6f} | "
-          f"{bt_p:>8}{bt_t:>10.6f}{nodos:>10,}{marca}")
-
-print("(*) el greedy NO alcanzó el óptimo en ese caso\n")
+    r = ejecutar_todas(tareas, cap)
+    resultados_archivos[n] = r
+    optimo = r["PD"][0]
+    linea = f"{nombre:<30}{n:>5}{cap:>6}"
+    for k in ("FB", "G", "BT", "DV", "PD"):
+        linea += f" | {fmt_p(r[k][0])} {fmt_t(r[k][1])}"
+    if r["G"][0] < optimo:
+        linea += f"   greedy = {100 * r['G'][0] / optimo:.2f}% del óptimo"
+    print(linea)
+print("(-) no se ejecuta: tamaño inviable o modo --rapido")
 
 
 # -------------------------------------------------------------
-# 2. CURVA n = 5..25 CON LAS TRES TÉCNICAS
+# 2. TABLA COMPARATIVA FINAL
 # -------------------------------------------------------------
-print("=" * 96)
-print("2. CURVA DE TIEMPOS n = 5..25 (fuerza bruta, backtracking sin/con cota, greedy)")
-print("=" * 96)
-tam_chicos = list(range(5, 26, 2))
-t_fb, t_bt_cap, t_bt, t_g = [], [], [], []
-calidad_chicos = []
+# Estimación de la fuerza bruta para n grande: su tiempo se DUPLICA por cada
+# tarea adicional (O(2^n)), así que se extrapola desde el n más grande medido.
+n_fb_max = max(n for n, r in resultados_archivos.items() if r["FB"][1] is not None)
+t_fb_max = resultados_archivos[n_fb_max]["FB"][1]
 
-for n in tam_chicos:
-    tareas, cap = generar_caso(n)
-    (p_fb, _), tf = cronometrar(fuerza_bruta_rec, tareas, cap, 0)
-    (_, _, nodos_cap), tc = cronometrar(backtracking, tareas, cap, False)
-    (p_bt, _, nodos), tb = cronometrar(backtracking, tareas, cap)
-    (p_g, _, _), tg = cronometrar(greedy, tareas, cap)
-    assert p_fb == p_bt, "El backtracking debe coincidir con la fuerza bruta"
-    t_fb.append(tf); t_bt_cap.append(tc); t_bt.append(tb); t_g.append(tg)
-    calidad_chicos.append(100 * p_g / p_bt)
-    print(f"n={n:3d} | FB {tf:9.4f}s | BT solo capacidad {tc:9.4f}s ({nodos_cap:>9,} nodos) | "
-          f"BT con cota {tb:.6f}s ({nodos:>5,} nodos) | Greedy {tg:.6f}s ({100*p_g/p_bt:5.1f}% del óptimo)")
+
+def estimar_fb(n):
+    segundos = t_fb_max * 2 ** (n - n_fb_max)
+    anios = segundos / (3600 * 24 * 365)
+    return f"inviable (~10^{len(str(int(anios))) - 1} años)"
+
+
+complejidades = {
+    "FB": ("O(2^n)", "O(n)", "Sí"),
+    "G": ("O(n log n)", "O(n)", "No"),
+    "BT": ("O(n·2^n) peor caso", "O(n)", "Sí"),
+    "DV": ("O(n²) aquí; O(n·T²) peor", "O(n·T)", "Sí"),
+    "PD": ("O(n·T)", "O(n·T)", "Sí"),
+}
+
+print("\n" + "=" * 104)
+print("2. TABLA COMPARATIVA FINAL")
+print("=" * 104)
+print(f"{'Técnica':<23}{'Temporal':<27}{'Espacial':<10}{'¿Óptima?':<10}"
+      f"{'Tiempo n=100':<26}{'Tiempo n=1000':<26}")
+print("-" * 122)
+for k in ("FB", "G", "BT", "DV", "PD"):
+    temporal, espacial, optima = complejidades[k]
+    celdas = []
+    for n in (100, 1000):
+        r = resultados_archivos.get(n)
+        if r is None:
+            celdas.append("-")
+        elif r[k][1] is not None:
+            celdas.append(f"{r[k][1]:.6f} s")
+        elif k == "FB":
+            celdas.append(estimar_fb(n))
+        else:
+            celdas.append("omitido (--rapido)")
+    print(f"{NOMBRES[k]:<23}{temporal:<27}{espacial:<10}{optima:<10}"
+          f"{celdas[0]:<26}{celdas[1]:<26}")
+print(f"T = capacidad del servidor (n=100 -> T=775; n=1000 -> T=7636). "
+      f"FB extrapolada desde n={n_fb_max} ({t_fb_max:.2f} s) duplicando por tarea.")
 
 
 # -------------------------------------------------------------
-# 3. ESCALABILIDAD n = 50..1000 (greedy vs backtracking)
+# 3. CURVA DE TIEMPOS vs n (las 5 técnicas)
 # -------------------------------------------------------------
-print("\n" + "=" * 96)
-print("3. ESCALABILIDAD n = 50..1000 (la fuerza bruta es inviable: 2^50 ~ 10^15 nodos)")
-print("=" * 96)
-tam_grandes = [50, 100, 200, 500, 1000]
-t_bt_g, t_g_g, calidad_grandes = [], [], []
+print("\n" + "=" * 104)
+print("3. CURVA DE TIEMPOS vs n  (instancias generadas con semilla 5000+n)")
+print("=" * 104)
+tamanios = [5, 9, 13, 17, 21, 25, 50, 100, 200, 400, 700, 1000]
+curva = {k: ([], []) for k in NOMBRES}
 
-for n in tam_grandes:
-    tareas, cap = generar_caso(n)
-    (p_bt, _, nodos), tb = cronometrar(backtracking, tareas, cap)
-    (p_g, _, _), tg = cronometrar(greedy, tareas, cap)
-    t_bt_g.append(tb); t_g_g.append(tg)
-    calidad_grandes.append(100 * p_g / p_bt)
-    print(f"n={n:5d} | BT con cota {tb:9.4f}s ({nodos:>9,} nodos) | "
-          f"Greedy {tg:.6f}s ({100*p_g/p_bt:6.2f}% del óptimo)")
+for n in tamanios:
+    capacidad, datos = generar(n, 5000 + n)
+    tareas = [Tarea(*d) for d in datos]
+    r = ejecutar_todas(tareas, capacidad, limite_fb=25)
+    texto = f"n={n:5d} T={capacidad:5d} |"
+    for k in ("FB", "G", "BT", "DV", "PD"):
+        if r[k][1] is not None:
+            curva[k][0].append(n)
+            curva[k][1].append(max(r[k][1], 1e-7))
+        texto += f" {k} {fmt_t(r[k][1])} |"
+    print(texto)
 
 
 # -------------------------------------------------------------
@@ -133,43 +199,42 @@ for n in tam_grandes:
 # -------------------------------------------------------------
 os.makedirs(DIR_DOCS, exist_ok=True)
 
-fig, ax = plt.subplots(figsize=(9, 5.5))
-ax.plot(tam_chicos, t_fb, "o-", color="red", lw=2, label="Fuerza bruta O(2^n)")
-ax.plot(tam_chicos, t_bt_cap, "s--", color="orange", lw=2, label="Backtracking (solo poda por capacidad)")
-ax.plot(tam_chicos, t_bt, "^-", color="green", lw=2, label="Backtracking (capacidad + cota)")
-ax.plot(tam_chicos, t_g, "d-", color="blue", lw=2, label="Greedy O(n log n)")
+# Figura 1: tiempo vs n de las 5 técnicas (log-log)
+fig, ax = plt.subplots(figsize=(10, 6))
+for k in ("FB", "BT", "DV", "PD", "G"):
+    xs, ys = curva[k]
+    ax.plot(xs, ys, marker=MARCAS[k], color=COLORES[k], lw=2, label=NOMBRES[k])
+ax.set_xscale("log")
 ax.set_yscale("log")
-ax.set_title("Tiempo de ejecución vs n (escala logarítmica)")
+ax.set_title("Tiempo de ejecución vs número de tareas (5 técnicas, escala log-log)")
 ax.set_xlabel("Número de tareas (n)")
-ax.set_ylabel("Tiempo (segundos, log)")
+ax.set_ylabel("Tiempo (segundos)")
 ax.grid(True, which="both", alpha=0.3)
 ax.legend()
 fig.tight_layout()
-ruta1 = os.path.join(DIR_DOCS, "grafica_entrega2_tiempos.png")
+ruta1 = os.path.join(DIR_DOCS, "grafica_entrega3_tiempos.png")
 fig.savefig(ruta1, dpi=150)
 
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-ax1.plot(tam_grandes, t_bt_g, "^-", color="green", lw=2, label="Backtracking (capacidad + cota)")
-ax1.plot(tam_grandes, t_g_g, "d-", color="blue", lw=2, label="Greedy")
-ax1.set_yscale("log")
-ax1.set_title("Escalabilidad (n grande)")
-ax1.set_xlabel("Número de tareas (n)")
-ax1.set_ylabel("Tiempo (segundos, log)")
-ax1.grid(True, which="both", alpha=0.3)
-ax1.legend()
-
-todos_n = tam_chicos + tam_grandes
-todas_cal = calidad_chicos + calidad_grandes
-ax2.plot(todos_n, todas_cal, "d-", color="blue", lw=2)
-ax2.axhline(100, color="green", ls="--", label="Óptimo (FB / Backtracking)")
-ax2.set_xscale("log")
-ax2.set_title("Calidad del greedy (% de la prioridad óptima)")
-ax2.set_xlabel("Número de tareas (n, log)")
-ax2.set_ylabel("% del óptimo")
-ax2.grid(True, which="both", alpha=0.3)
-ax2.legend()
+# Figura 2: barras con los tiempos en n=28, n=100 y n=1000
+fig, axes = plt.subplots(1, 3, figsize=(14, 4.8))
+for ax, n in zip(axes, (28, 100, 1000)):
+    r = resultados_archivos.get(n)
+    if r is None:
+        continue
+    claves = [k for k in ("FB", "G", "BT", "DV", "PD") if r[k][1] is not None]
+    valores = [max(r[k][1], 1e-7) for k in claves]
+    barras = ax.bar([NOMBRES[k].replace(" ", "\n", 1) for k in claves], valores,
+                    color=[COLORES[k] for k in claves])
+    ax.set_yscale("log")
+    ax.set_title(f"n = {n}")
+    ax.set_ylabel("Tiempo (s, log)")
+    ax.tick_params(axis="x", labelsize=8)
+    for b, v in zip(barras, valores):
+        ax.text(b.get_x() + b.get_width() / 2, v, f"{v:.2g}s",
+                ha="center", va="bottom", fontsize=8)
+fig.suptitle("Tiempo real en los archivos de prueba (las técnicas omitidas son inviables)")
 fig.tight_layout()
-ruta2 = os.path.join(DIR_DOCS, "grafica_entrega2_escalabilidad.png")
+ruta2 = os.path.join(DIR_DOCS, "grafica_entrega3_barras.png")
 fig.savefig(ruta2, dpi=150)
 
 print(f"\nGráficas guardadas en:\n  {os.path.normpath(ruta1)}\n  {os.path.normpath(ruta2)}")
